@@ -1,6 +1,8 @@
-# OVH 控制台
+# OVH Pilot
 
 > 🌐 [English](README.en.md) | 中文
+
+OVH Pilot 基于原作者 [gokele](https://github.com/gokele) 的 [gokele/ovh](https://github.com/gokele/ovh) 项目二次开发，由 [lchecho](https://github.com/lchecho) 在 [lchecho/ovh-pilot](https://github.com/lchecho/ovh-pilot) 继续开发和维护。感谢原作者及原项目贡献者。
 
 OVH 独立服务器 / VPS / Eco 系列**抢购 + 监控 + 管理**控制台。
 

@@ -1,6 +1,8 @@
-# OVH Console
+# OVH Pilot
 
 > 🌐 English | [中文](README.md)
+
+OVH Pilot is based on [gokele/ovh](https://github.com/gokele/ovh), originally created by [gokele](https://github.com/gokele). Further development and maintenance are carried out by [lchecho](https://github.com/lchecho) in [lchecho/ovh-pilot](https://github.com/lchecho/ovh-pilot). Thanks to the original author and contributors.
 
 A **sniping + monitoring + management** console for OVH bare-metal servers / VPS / Eco lines.
 
