@@ -234,6 +234,41 @@ export type OrderPayBody =
   | { kind: "method"; accountId: string; paymentMethodId: number; paymentType: string; amount: number; currency: string; confirm: true }
   | { kind: "balance"; accountId: string; balanceName: string; amount: number; currency: string; confirm: true };
 
+/** 订单交付跟踪(只读):状态 + followUp 交付步骤(BETA)+ 商品明细 */
+export interface OrderTracking {
+  accountId: string;
+  orderId: number;
+  status: string;
+  steps: { step: string; status: string; history: { date: string; label: string; description: string }[] }[];
+  details: { description: string; detailType: string; quantity: string; domain?: string; cancelled: boolean; total?: string }[];
+  followUpError?: string;
+  detailsError?: string;
+}
+
+/** 进行中的订单每分钟刷新一次;已交付/已取消的不轮询 */
+export function useOrderTracking(accountId: string, orderId: number | string, enabled: boolean) {
+  return useQuery({
+    queryKey: qk.account.orderTracking(accountId, orderId),
+    queryFn: async ({ signal }) =>
+      (await api.get<OrderTracking>(`/ovh/account/orders/${orderId}/tracking`, { params: { account: accountId }, signal })).data,
+    enabled: enabled && trackingOrderId(accountId, orderId) !== undefined,
+    staleTime: 30_000,
+    retry: false,
+    refetchInterval: (q) => {
+      const s = (q.state.data as OrderTracking | undefined)?.status;
+      return s && ["delivered", "cancelled"].includes(s) ? false : 60_000;
+    },
+  });
+}
+
+/** Historical IDs are decimal int64 strings. Never round, trim or fall back to the active account. */
+export function trackingOrderId(accountId: string | undefined, orderId: number | string | undefined): string | undefined {
+  if (!accountId || accountId.trim() !== accountId) return;
+  if (typeof orderId === "number" && !Number.isSafeInteger(orderId)) return;
+  const id = typeof orderId === "number" ? String(orderId) : orderId;
+  if (id && /^[1-9]\d{0,18}$/.test(id) && (id.length < 19 || id <= "9223372036854775807")) return id;
+}
+
 /** 打开付款窗口时只读取可用方式,不产生付款请求。 */
 export function useOrderPaymentInfo(accountId: string, orderId: number, open: boolean) {
   return useQuery({

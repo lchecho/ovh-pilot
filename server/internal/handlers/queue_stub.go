@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -26,12 +29,23 @@ func GetQueue(state *app.State) gin.HandlerFunc {
 		cp := make([]types.QueueItem, len(state.Queue))
 		copy(cp, state.Queue)
 		state.QueueMu.Unlock()
-		orders := make(map[string]string)
+		// A task may have several orders (quantity > 1). Only expose a direct order
+		// reference when all successes for this account/task identify the same order.
+		type taskKey struct{ account, task string }
+		orders := make(map[taskKey]string)
 		state.HistoryMu.Lock()
 		for _, h := range state.History {
-			if h.Status == "success" && h.OrderID != "" {
-				orders[h.TaskID] = h.OrderID
+			if h.Status != "success" || h.TaskID == "" {
+				continue
 			}
+			key := taskKey{h.AccountID, h.TaskID}
+			id := h.OrderID
+			n, err := strconv.ParseInt(id, 10, 64)
+			previous, seen := orders[key]
+			if err != nil || n <= 0 || strconv.FormatInt(n, 10) != id || (seen && previous != id) {
+				id = "" // Missing, malformed or ambiguous: keep the generic history link.
+			}
+			orders[key] = id
 		}
 		state.HistoryMu.Unlock()
 		// 每个账户视角的目录缓存只取一次(GetBucket 返回副本)
@@ -60,7 +74,7 @@ func GetQueue(state *app.State) gin.HandlerFunc {
 			view[i].QueueItem = item
 			view[i].PlanName = planName(item.AccountID, item.PlanCode)
 			if item.Status == "completed" {
-				view[i].OrderID = orders[item.ID]
+				view[i].OrderID = orders[taskKey{item.AccountID, item.ID}]
 			}
 		}
 		c.JSON(http.StatusOK, view)
@@ -74,6 +88,29 @@ func GetPurchaseHistory(state *app.State) gin.HandlerFunc {
 		cp := make([]types.PurchaseHistoryEntry, len(state.History))
 		copy(cp, state.History)
 		state.HistoryMu.Unlock()
+		sortHistoryNewestFirst(cp)
 		c.JSON(http.StatusOK, cp)
 	}
+}
+
+// sortHistoryNewestFirst 按下单时间从新到旧排序。
+// 启动时从库里按时间倒序读出,但运行中新记录是追加到末尾的,不排序的话重启后的新订单会落到最下面。
+// 时间解析失败的排在最后,相同时间保持原有相对顺序。
+func sortHistoryNewestFirst(items []types.PurchaseHistoryEntry) {
+	at := func(s string) (time.Time, bool) {
+		for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.999999999", "2006-01-02 15:04:05"} {
+			if t, err := time.Parse(layout, s); err == nil {
+				return t, true
+			}
+		}
+		return time.Time{}, false
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		ti, oki := at(items[i].PurchaseTime)
+		tj, okj := at(items[j].PurchaseTime)
+		if oki != okj {
+			return oki
+		}
+		return ti.After(tj)
+	})
 }
